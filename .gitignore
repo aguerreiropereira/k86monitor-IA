@@ -29,3 +29,14 @@ Thumbs.db
 # Local temporary files & logs
 *.log
 *.tmp
+
+# Packaging & Releases
+dist/
+build/
+*.deb
+*.tar.gz
+
+# Internal assistant guidelines
+AGENTS.md
+CLAUDE.md
+GEMINI.md
