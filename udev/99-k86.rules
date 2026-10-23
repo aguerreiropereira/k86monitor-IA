@@ -1,0 +1,3 @@
+# Attack Shark K86 Keyboard Display Interface (0x3151:0x4015)
+# Allows users in plugdev group / active desktop session (uaccess) to communicate with the ST7789 display
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="4015", MODE="0666", GROUP="plugdev", TAG+="uaccess"

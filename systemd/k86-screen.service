@@ -1,0 +1,12 @@
+[Unit]
+Description=Attack Shark K86 Screen AI Quota Monitor Daemon
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/k86-screen-daemon
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
