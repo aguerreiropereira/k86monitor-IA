@@ -39,8 +39,8 @@ k86-display-studio/
 Clone o repositório e execute o script de instalação para configurar os atalhos, ícones e serviço de usuário:
 
 ```bash
-git clone https://github.com/AndersonGuerreiro/k86-display-studio.git
-cd k86-display-studio
+git clone https://github.com/aguerreiropereira/k86monitor-IA.git
+cd k86monitor-IA
 ./install.sh
 ```
 
