@@ -7,7 +7,6 @@ screen when data/settings change or on the minute clock tick.
 """
 from __future__ import annotations
 
-import os
 import signal
 import sys
 import time
@@ -16,30 +15,11 @@ from typing import Any, Optional
 
 from k86_config import load_config, get_config_path
 from k86_renderer import render_display, frame_to_rgb565, load_live_stats, CONFIG_DIR
-from k86_trio_monitor import K86ScreenDirect
+from k86_trio_monitor import K86ScreenDirect, find_k86_device, find_k86_hidraw
 
-DEFAULT_DEVICE_PATH: str = "/dev/hidraw6"
 DEFAULT_REFRESH_SECONDS: int = 15
 
 _running: bool = True
-
-
-def find_k86_hidraw() -> str:
-    """Find the Attack Shark K86 Interface 2 (screen control) hidraw device dynamically."""
-    base = Path("/sys/class/hidraw")
-    if base.is_dir():
-        for hid in sorted(base.glob("hidraw*")):
-            uevent = hid / "device" / "uevent"
-            if uevent.is_file():
-                try:
-                    content = uevent.read_text(encoding="utf-8", errors="ignore")
-                    if "00003151:00004015" in content and "input2" in content:
-                        return f"/dev/{hid.name}"
-                except OSError:
-                    pass
-    if os.path.exists("/dev/hidraw5"):
-        return "/dev/hidraw5"
-    return DEFAULT_DEVICE_PATH
 
 
 def get_watched_files(
@@ -102,7 +82,7 @@ def get_refresh_interval(cfg: Optional[dict[str, Any]] = None) -> int:
 
 def run_iteration(
     last_state: Any = None,
-    device_path: str = DEFAULT_DEVICE_PATH,
+    device_path: Optional[str | bytes] = None,
     config_path: Optional[Path] = None,
     config_dir: Optional[Path] = None,
     screen_factory: Any = K86ScreenDirect,
@@ -118,7 +98,7 @@ def run_iteration(
     if state == last_state:
         return last_state, False
 
-    effective_dev = find_k86_hidraw() if device_path == DEFAULT_DEVICE_PATH else device_path
+    effective_dev = find_k86_device() if device_path is None else device_path
 
     img = renderer_func(cfg)
     screen = None
@@ -147,7 +127,10 @@ def _signal_handler(signum: int, frame: Any) -> None:
     _running = False
 
 
-def main(device_path: str = DEFAULT_DEVICE_PATH, config_path: Optional[Path] = None) -> None:
+def main(
+    device_path: Optional[str | bytes] = None,
+    config_path: Optional[Path] = None,
+) -> None:
     """Main daemon loop."""
     global _running
     _running = True

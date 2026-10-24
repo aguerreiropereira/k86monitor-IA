@@ -11,9 +11,15 @@ import os
 import sys
 import json
 import time
-import fcntl
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
+from k86_config import get_data_dir
+from k86_fonts import load_font
+
+try:
+    import fcntl
+except ImportError:  # Windows and macOS use HIDAPI instead of Linux ioctl.
+    fcntl = None
 
 SCREEN_W = 240
 SCREEN_H = 128
@@ -22,14 +28,19 @@ OP_SCREEN_CANWRITE_16 = 165
 OP_SCREEN_DATA_16 = 37
 CHUNK = 56
 
-CONFIG_DIR = Path.home() / ".config" / "codenotch"
+CONFIG_DIR = get_data_dir()
 ICONS_DIR = CONFIG_DIR / "k86_icons"
 
 # Fonts
-FONT_TITLE = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 11)
-FONT_SUB = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 8)
-FONT_LBL = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 8)
-FONT_VAL = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 9)
+def _get_font(filename: str, size: int) -> ImageFont.ImageFont:
+    """Load a system font appropriate for the current platform."""
+    return load_font(filename, size)
+
+
+FONT_TITLE = _get_font("LiberationSans-Bold.ttf", 11)
+FONT_SUB = _get_font("LiberationSans-Regular.ttf", 8)
+FONT_LBL = _get_font("LiberationSans-Bold.ttf", 8)
+FONT_VAL = _get_font("LiberationSans-Bold.ttf", 9)
 
 def HIDIOCSFEATURE(length):
     return (3 << 30) | (ord('H') << 8) | 0x06 | (length << 16)
@@ -58,6 +69,10 @@ def frame_to_bytes(img):
     return bytes(out)
 
 def find_k86_hidraw() -> str:
+    """Find the K86 screen interface through Linux hidraw."""
+    if not sys.platform.startswith("linux"):
+        raise RuntimeError("hidraw device discovery is only available on Linux")
+
     base = Path("/sys/class/hidraw")
     if base.is_dir():
         for hid in sorted(base.glob("hidraw*")):
@@ -74,29 +89,90 @@ def find_k86_hidraw() -> str:
     return "/dev/hidraw6"
 
 
+def find_k86_device() -> str | bytes:
+    """Find the K86 screen-control HID interface on the current platform."""
+    if sys.platform.startswith("linux"):
+        return find_k86_hidraw()
+
+    try:
+        import hid
+    except ImportError as exc:
+        raise RuntimeError(
+            "Cross-platform HID support requires the 'hidapi' Python package "
+            "(install with: python -m pip install hidapi)."
+        ) from exc
+
+    devices = hid.enumerate(0x3151, 0x4015)
+    for device in devices:
+        if device.get("interface_number") == 2:
+            return device["path"]
+
+    raise OSError(
+        "Attack Shark K86 screen interface (USB 3151:4015, interface 2) "
+        "was not found. Check that the keyboard is connected."
+    )
+
+
 class K86ScreenDirect:
     def __init__(self, device_path=None):
         if device_path is None:
-            device_path = find_k86_hidraw()
-        self.fd = os.open(device_path, os.O_RDWR)
+            device_path = find_k86_device()
         self.path = device_path
+        self.fd = None
+        self.device = None
+
+        if sys.platform.startswith("linux"):
+            if fcntl is None:
+                raise RuntimeError("Linux hidraw support requires the fcntl module")
+            self.fd = os.open(device_path, os.O_RDWR)
+        else:
+            try:
+                import hid
+            except ImportError as exc:
+                raise RuntimeError(
+                    "Cross-platform HID support requires the 'hidapi' Python "
+                    "package (install with: python -m pip install hidapi)."
+                ) from exc
+            if hasattr(hid, "device"):
+                self.device = hid.device()
+                self.device.open_path(device_path)
+            elif hasattr(hid, "Device"):
+                self.device = hid.Device(path=device_path)
+            else:
+                raise RuntimeError(
+                    "The installed HIDAPI Python package exposes no supported device API."
+                )
 
     def close(self):
         if self.fd is not None:
             os.close(self.fd)
             self.fd = None
+        if self.device is not None:
+            self.device.close()
+            self.device = None
 
     def send_feature(self, cmd_bytes):
         payload = encode_bit7(cmd_bytes)
         req = bytearray([0x00]) + payload
-        fcntl.ioctl(self.fd, HIDIOCSFEATURE(65), req)
+        if self.device is not None:
+            result = self.device.send_feature_report(req)
+            if result < 0:
+                raise OSError("HID feature report write failed")
+        else:
+            fcntl.ioctl(self.fd, HIDIOCSFEATURE(65), req)
 
     def query(self, cmd_bytes, wait=0.06):
         self.send_feature(cmd_bytes)
         time.sleep(wait)
         resp = bytearray(65)
         resp[0] = 0x00
-        fcntl.ioctl(self.fd, HIDIOCGFEATURE(65), resp)
+        if self.device is not None:
+            response = self.device.get_feature_report(0, 65)
+            if not response:
+                raise OSError("HID feature report read returned no data")
+            resp[:min(len(response), len(resp))] = bytes(response[:len(resp)])
+        else:
+            fcntl.ioctl(self.fd, HIDIOCGFEATURE(65), resp)
         return bytes(resp)
 
     def write_screen(self, img):
@@ -265,7 +341,7 @@ if __name__ == "__main__":
     preview_path = Path(__file__).resolve().parent / "assets" / "k86_panoramic_preview.png"
     img.save(preview_path)
 
-    screen = K86ScreenDirect("/dev/hidraw6")
+    screen = K86ScreenDirect()
     try:
         screen.write_screen(img)
         print("Panoramic 240x128 Dashboard sent to Attack Shark K86 successfully!")

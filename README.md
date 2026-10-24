@@ -1,8 +1,35 @@
 # K86 Display Studio 🦈🖥️
 
-Painel de controle visual e daemon de sincronização em segundo plano para a tela LCD colorida panorâmica (240x128 pixels, ST7789 IPS) do teclado **Attack Shark K86** no Linux.
+Painel de controle visual e daemon de sincronização em segundo plano para a tela LCD colorida panorâmica (240x128 pixels, ST7789 IPS) do teclado **Attack Shark K86**.
 
 Monitora em tempo real as cotas de uso de inteligência artificial (Anthropic Claude, OpenAI Codex, Antigravity/Gemini, GitHub Copilot, Cursor, OpenCode, xAI Grok e Z.ai GLM), além de métricas locais do sistema (CPU/RAM).
+
+## Estado do suporte multiplataforma
+
+O Linux continua sendo a plataforma de instalação oficialmente suportada. A preparação para Windows e macOS começou com a separação da descoberta e comunicação HID: Linux mantém `hidraw`, enquanto Windows/macOS usam HIDAPI. No ambiente Python do macOS, instale a dependência com `python -m pip install hidapi`; no MSYS2/UCRT64, use o pacote `mingw-w64-ucrt-x86_64-python-hid`.
+
+O código agora inclui caminhos de execução do daemon, inicialização no login e fontes de tela para Windows e macOS. Os instaladores nativos estão sendo preparados; o acesso HID ainda precisa ser validado com o teclado K86 conectado antes de considerar essas plataformas oficialmente suportadas.
+
+O workflow [Build native installers](.github/workflows/native-installers.yml) prepara o instalador Windows x64 (`.exe`) e imagens macOS Intel/Apple Silicon (`.dmg`). Ele pode ser iniciado manualmente em **Actions** ou automaticamente ao publicar uma tag `v*`; nas tags, os três arquivos são anexados à release do GitHub. Os pacotes são experimentais até serem abertos em cada sistema e testados com o K86. Os builds não são assinados: no macOS o Gatekeeper pode exigir que o usuário autorize a abertura.
+
+As dependências Python compartilhadas estão em [`requirements.txt`](requirements.txt). GTK 4 e PyGObject precisam ser fornecidos pelo sistema; o [guia oficial PyGObject](https://pygobject.gnome.org/getting_started.html) documenta a instalação por plataforma. No Windows, a instalação indicada usa MSYS2/UCRT64; no macOS, Homebrew. A interface também depende de Libadwaita, disponível como pacote MSYS2 e Homebrew.
+
+Para preparar um ambiente de desenvolvimento:
+
+```bash
+# macOS (Homebrew)
+brew install pygobject3 gtk4 libadwaita hidapi
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+python3 k86_display_studio.py
+```
+
+No Windows, use o terminal UCRT64 do MSYS2 e instale com `pacman` `mingw-w64-ucrt-x86_64-python`, `mingw-w64-ucrt-x86_64-python-gobject`, `mingw-w64-ucrt-x86_64-gtk4`, `mingw-w64-ucrt-x86_64-libadwaita`, `mingw-w64-ucrt-x86_64-python-pillow`, `mingw-w64-ucrt-x86_64-python-psutil` e `mingw-w64-ucrt-x86_64-python-hid`. Depois rode `python k86_display_studio.py` nesse terminal. O PyGObject pode exigir configurar `PYGI_DLL_PATH` para localizar as DLLs do MSYS2; siga o [guia de instalação Windows](https://pygobject.gnome.org/getting_started.html#windows).
+
+O serviço `systemd` continua disponível apenas no Linux. Em Windows/macOS, a interface inicia e reinicia o daemon como processo de usuário separado. A opção “Iniciar daemon ao entrar no sistema” registra sua inicialização no login do usuário: via Task Scheduler no Windows e LaunchAgent no macOS. O log fica em `k86-screen-daemon.log` dentro do diretório de configuração do usuário.
+
+As pastas de dados e configurações podem ser direcionadas com `K86_DATA_DIR` e `K86_CONFIG_DIR`, respectivamente. Isso permite apontar o monitor para os arquivos de cotas usados por outra instalação ou aplicativo.
 
 ---
 
@@ -14,9 +41,12 @@ k86-display-studio/
 ├── k86_renderer.py           # Motor de renderização e composição 240x128
 ├── k86_config.py             # Schema, validação e persistência atômica
 ├── k86_trio_daemon.py        # Daemon com hot-reload automático
-├── k86_trio_monitor.py       # Driver de baixo nível HID (ioctl/USB)
+├── k86_service.py            # Controle do daemon por plataforma
+├── k86_trio_monitor.py       # Transporte USB HID por plataforma
+├── requirements.txt          # Dependências Python compartilhadas
 ├── k86_screen_token.py       # Utilitário de telemetria de tokens
 ├── k86_calibrate_width.py    # Régua e calibrador de largura física
+├── packaging/                # Build PyInstaller e instalador Windows/macOS
 ├── install.sh                # Script de instalação automatizada
 ├── uninstall.sh              # Script de desinstalação
 ├── udev/                     # Regras udev de permissão USB

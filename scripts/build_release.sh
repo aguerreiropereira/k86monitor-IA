@@ -27,16 +27,20 @@ mkdir -p "${TAR_DIR}"
 cp -r "${REPO_DIR}/k86_display_studio.py" \
       "${REPO_DIR}/k86_renderer.py" \
       "${REPO_DIR}/k86_config.py" \
+      "${REPO_DIR}/k86_fonts.py" \
       "${REPO_DIR}/k86_trio_daemon.py" \
+      "${REPO_DIR}/k86_service.py" \
       "${REPO_DIR}/k86_trio_monitor.py" \
       "${REPO_DIR}/k86_screen_token.py" \
       "${REPO_DIR}/k86_calibrate_width.py" \
       "${REPO_DIR}/install.sh" \
       "${REPO_DIR}/uninstall.sh" \
       "${REPO_DIR}/README.md" \
+      "${REPO_DIR}/requirements.txt" \
       "${REPO_DIR}/LICENSE" \
       "${REPO_DIR}/assets" \
       "${REPO_DIR}/scripts" \
+      "${REPO_DIR}/packaging" \
       "${REPO_DIR}/systemd" \
       "${REPO_DIR}/udev" \
       "${TAR_DIR}/"
@@ -112,7 +116,9 @@ EOF
     cp -r "${REPO_DIR}/k86_display_studio.py" \
           "${REPO_DIR}/k86_renderer.py" \
           "${REPO_DIR}/k86_config.py" \
+          "${REPO_DIR}/k86_fonts.py" \
           "${REPO_DIR}/k86_trio_daemon.py" \
+          "${REPO_DIR}/k86_service.py" \
           "${REPO_DIR}/k86_trio_monitor.py" \
           "${REPO_DIR}/k86_screen_token.py" \
           "${REPO_DIR}/k86_calibrate_width.py" \

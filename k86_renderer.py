@@ -12,25 +12,20 @@ from typing import Any, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
-from k86_config import load_config
+from k86_config import get_data_dir, load_config
+from k86_fonts import load_font
 
 SCREEN_W: int = 240
 SCREEN_H: int = 128
 
-CONFIG_DIR: Path = Path.home() / ".config" / "codenotch"
+CONFIG_DIR: Path = get_data_dir()
 ICONS_DIR: Path = CONFIG_DIR / "k86_icons"
 ASSETS_DIR: Path = Path(__file__).resolve().parent / "assets"
 
 
 def _get_font(font_name: str, size: int) -> ImageFont.ImageFont:
-    """Load a TrueType font if available, falling back safely to default."""
-    font_path = Path("/usr/share/fonts/truetype/liberation") / font_name
-    if font_path.is_file():
-        try:
-            return ImageFont.truetype(str(font_path), size)
-        except Exception:
-            pass
-    return ImageFont.load_default()
+    """Load a system font appropriate for the current platform."""
+    return load_font(font_name, size)
 
 
 FONT_TITLE = _get_font("LiberationSans-Bold.ttf", 11)

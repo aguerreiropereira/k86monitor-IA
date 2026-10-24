@@ -10,9 +10,18 @@ import copy
 import io
 import os
 from pathlib import Path
-import subprocess
 import sys
 from typing import Any, Optional
+
+# PyInstaller stores bundled GTK introspection data beside the executable.
+if getattr(sys, "frozen", False):
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    typelib_dir = bundle_root / "girepository-1.0"
+    if typelib_dir.is_dir():
+        existing = os.environ.get("GI_TYPELIB_PATH", "")
+        os.environ["GI_TYPELIB_PATH"] = os.pathsep.join(
+            part for part in (str(typelib_dir), existing) if part
+        )
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -25,9 +34,11 @@ from PIL import Image
 
 from k86_config import DEFAULT_CONFIG, get_config_path, load_config, save_config
 from k86_renderer import render_display
+import k86_service
 
 APP_ID: str = "io.github.codenotch.k86studio"
 SERVICE_NAME: str = "k86-screen.service"
+IS_LINUX: bool = sys.platform.startswith("linux")
 
 CUSTOM_CSS: str = """
 .k86-preview-frame {
@@ -253,11 +264,21 @@ class MainWindow(Adw.ApplicationWindow):
         self.switch_clock.connect("notify::active", self._on_setting_changed)
         self.group_display.add(self.switch_clock)
 
+        self.switch_start_on_login = Adw.SwitchRow(
+            title="Iniciar daemon ao entrar no sistema",
+            subtitle="Manter a tela sincronizada após entrar na sua conta",
+        )
+        self.group_display.add(self.switch_start_on_login)
+
         self.row_service = Adw.ActionRow(
-            title="Serviço k86-screen.service",
+            title=(
+                "Serviço k86-screen.service"
+                if IS_LINUX
+                else "Serviço de sincronização"
+            ),
             subtitle="Status: Verificando...",
         )
-        self.btn_restart_service = Gtk.Button(label="Reiniciar")
+        self.btn_restart_service = Gtk.Button(label="Reiniciar daemon")
         self.btn_restart_service.set_valign(Gtk.Align.CENTER)
         self.btn_restart_service.connect("clicked", self.on_restart_service_clicked)
         self.row_service.add_suffix(self.btn_restart_service)
@@ -269,6 +290,12 @@ class MainWindow(Adw.ApplicationWindow):
 
         screen = cfg.get("screen", {})
         self.switch_clock.set_active(screen.get("show_clock", True))
+        daemon = cfg.get("daemon", {})
+        if not isinstance(daemon, dict):
+            daemon = {}
+        self.switch_start_on_login.set_active(
+            daemon.get("start_on_login", k86_service.is_autostart_enabled())
+        )
 
         providers = cfg.get("providers", {})
         provider_mappings = (
@@ -343,6 +370,10 @@ class MainWindow(Adw.ApplicationWindow):
         cfg["system_metrics"]["show_cpu"] = sys_enabled
         cfg["system_metrics"]["show_ram"] = sys_enabled
 
+        if "daemon" not in cfg or not isinstance(cfg["daemon"], dict):
+            cfg["daemon"] = copy.deepcopy(DEFAULT_CONFIG["daemon"])
+        cfg["daemon"]["start_on_login"] = self.switch_start_on_login.get_active()
+
         return cfg
 
     def update_preview(self) -> Gdk.Texture:
@@ -367,41 +398,36 @@ class MainWindow(Adw.ApplicationWindow):
             self.update_preview()
 
     def get_service_status(self) -> str:
-        """Check status of systemd user unit k86-screen.service."""
-        try:
-            res = subprocess.run(
-                ["systemctl", "--user", "is-active", SERVICE_NAME],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            return "Running" if res.stdout.strip() == "active" else "Stopped"
-        except Exception:
-            return "Stopped"
+        """Check status of the platform's user daemon."""
+        return k86_service.status_label()
 
     def update_service_status(self) -> str:
         """Refresh the status label in the UI action row."""
         status = self.get_service_status()
         self.row_service.set_subtitle(f"Status: {status}")
+        if status == "Running":
+            self.btn_restart_service.set_label("Reiniciar daemon")
+        else:
+            self.btn_restart_service.set_label("Iniciar daemon")
         return status
 
-    def trigger_hot_reload(self) -> None:
-        """Trigger daemon hot-reload on hardware via systemctl."""
+    def trigger_hot_reload(self) -> bool:
+        """Restart the platform daemon so it applies the current configuration."""
         try:
-            subprocess.run(
-                ["systemctl", "--user", "restart", SERVICE_NAME],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
+            k86_service.restart()
+            return True
         except Exception as e:
-            print(f"Warning: Hot reload trigger failed: {e}", file=sys.stderr)
+            print(f"Warning: Daemon restart failed: {e}", file=sys.stderr)
+            return False
 
     def on_restart_service_clicked(self, button: Optional[Gtk.Button] = None) -> None:
         """Restart k86-screen.service and show confirmation toast."""
-        self.trigger_hot_reload()
+        was_running = self.get_service_status() == "Running"
+        restarted = self.trigger_hot_reload()
         self.update_service_status()
-        toast = Adw.Toast.new("Serviço k86-screen reiniciado!")
+        action = "reiniciado" if was_running else "iniciado"
+        message = f"Daemon {action}." if restarted else "Não foi possível iniciar o daemon."
+        toast = Adw.Toast.new(message)
         self.toast_overlay.add_toast(toast)
 
     def on_save_clicked(self, button: Optional[Gtk.Button] = None) -> None:
@@ -410,10 +436,27 @@ class MainWindow(Adw.ApplicationWindow):
         self.config = cfg
         save_config(cfg, path=self.config_path)
 
-        self.trigger_hot_reload()
+        autostart_updated = True
+        try:
+            should_start_on_login = cfg["daemon"]["start_on_login"]
+            if k86_service.is_autostart_enabled() != should_start_on_login:
+                k86_service.set_autostart(should_start_on_login)
+        except Exception as e:
+            autostart_updated = False
+            print(f"Warning: Failed to update login startup setting: {e}", file=sys.stderr)
+
+        restarted = self.trigger_hot_reload()
         self.update_service_status()
 
-        toast = Adw.Toast.new("Configurações salvas e aplicadas!")
+        if restarted and autostart_updated:
+            message = "Configurações salvas e aplicadas!"
+        elif not restarted and not autostart_updated:
+            message = "Configurações salvas, mas o daemon e a inicialização falharam."
+        elif not restarted:
+            message = "Configurações salvas. O daemon não iniciou."
+        else:
+            message = "Configurações aplicadas, mas a inicialização automática falhou."
+        toast = Adw.Toast.new(message)
         self.toast_overlay.add_toast(toast)
 
 
@@ -446,4 +489,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--k86-start-daemon" in sys.argv[1:]:
+        k86_service.start()
+    elif "--k86-run-daemon" in sys.argv[1:]:
+        from k86_trio_daemon import main as run_daemon
+
+        run_daemon()
+    else:
+        main()

@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
 Attack Shark K86 Screen AI Token Monitor
-Uses direct Linux hidraw ioctl communication on Interface 2.
+Uses the shared cross-platform HID transport on the K86 screen interface.
 """
-import os
-import sys
-import fcntl
 import time
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+from k86_trio_monitor import K86ScreenDirect as _K86ScreenTransport
 
 SCREEN_W = 128
 SCREEN_H = 128
@@ -16,18 +14,6 @@ REPORT_LEN = 64
 OP_SCREEN_CANWRITE_16 = 165
 OP_SCREEN_DATA_16 = 37
 CHUNK = 56
-
-def HIDIOCSFEATURE(length):
-    return (3 << 30) | (ord('H') << 8) | 0x06 | (length << 16)
-
-def HIDIOCGFEATURE(length):
-    return (3 << 30) | (ord('H') << 8) | 0x07 | (length << 16)
-
-def encode_bit7(cmd_bytes):
-    buf = bytearray(REPORT_LEN)
-    buf[:len(cmd_bytes)] = bytes(cmd_bytes)
-    buf[7] = (255 - (sum(buf[0:7]) & 0xff)) & 0xff
-    return buf
 
 def rgb565_be(r, g, b):
     v = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
@@ -44,29 +30,8 @@ def frame_to_bytes(img):
             out += rgb565_be(r, g, b)
     return bytes(out)
 
-class K86ScreenDirect:
-    def __init__(self, device_path="/dev/hidraw6"):
-        self.fd = os.open(device_path, os.O_RDWR)
-        self.path = device_path
-
-    def close(self):
-        if self.fd is not None:
-            os.close(self.fd)
-            self.fd = None
-
-    def send_feature(self, cmd_bytes):
-        payload = encode_bit7(cmd_bytes)
-        req = bytearray([0x00]) + payload
-        fcntl.ioctl(self.fd, HIDIOCSFEATURE(65), req)
-
-    def query(self, cmd_bytes, wait=0.06):
-        self.send_feature(cmd_bytes)
-        time.sleep(wait)
-        resp = bytearray(65)
-        resp[0] = 0x00
-        fcntl.ioctl(self.fd, HIDIOCGFEATURE(65), resp)
-        return bytes(resp)
-
+class K86ScreenDirect(_K86ScreenTransport):
+    """Cross-platform transport with the legacy 128×128 token layout."""
     def write_screen(self, img):
         rgbs = frame_to_bytes(img)
         byte_len = len(rgbs) # 32768
@@ -157,7 +122,7 @@ if __name__ == "__main__":
     preview_path = Path(__file__).resolve().parent / "assets" / "token_dashboard_preview.png"
     img.save(preview_path)
 
-    screen = K86ScreenDirect("/dev/hidraw6")
+    screen = K86ScreenDirect()
     try:
         screen.write_screen(img)
         print("Done! Image successfully transmitted to Attack Shark K86 screen!")

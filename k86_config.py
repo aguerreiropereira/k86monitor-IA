@@ -1,13 +1,14 @@
 """Configuration management for K86 Display Studio.
 
-Provides safe defaults, schema validation, and persistence for K86 Display
-settings at ~/.config/codenotch/k86_config.json.
+Provides safe defaults, schema validation, and platform-aware persistence for
+K86 Display settings.
 """
 from __future__ import annotations
 
 import copy
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
@@ -41,9 +42,39 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 
+def get_data_dir() -> Path:
+    """Return the directory containing provider quota data and user icons."""
+    override = os.environ.get("K86_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
+
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "codenotch"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "codenotch"
+
+    # Keep the established Linux location for existing quota caches and icons.
+    return Path.home() / ".config" / "codenotch"
+
+
+def get_config_dir() -> Path:
+    """Return the per-user configuration directory for this application."""
+    override = os.environ.get("K86_CONFIG_DIR")
+    if override:
+        return Path(override).expanduser()
+
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "K86 Display Studio"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "K86 Display Studio"
+
+    # Preserve the existing Linux config path during the platform migration.
+    return get_data_dir()
+
+
 def get_config_path() -> Path:
     """Return the default configuration file path."""
-    return Path.home() / ".config" / "codenotch" / "k86_config.json"
+    return get_config_dir() / "k86_config.json"
 
 
 def load_config(path: Optional[Path | str] = None) -> dict[str, Any]:
