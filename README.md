@@ -36,6 +36,18 @@ k86-display-studio/
 
 ## 📦 Instalação
 
+### Opção 1: Baixar o Pacote Pronto (.deb / .tar.gz) 🚀
+Você pode baixar os instaladores prontos diretamente na [página de Releases](https://github.com/aguerreiropereira/k86monitor-IA/releases/latest):
+
+* **Ubuntu / Debian / Pop!_OS / Linux Mint:** Baixe o arquivo `k86monitor-ia_1.0.0_all.deb` e instale com dois cliques ou:
+  ```bash
+  sudo apt install ./k86monitor-ia_1.0.0_all.deb
+  ```
+  *(O pacote `.deb` já configura automaticamente as dependências, regras udev e o serviço de segundo plano).*
+
+* **Universal (Fedora, Arch, etc.):** Baixe `k86monitor-ia-1.0.0.tar.gz`, extraia e execute `./install.sh`.
+
+### Opção 2: Instalação via Código Fonte (Git)
 Clone o repositório e execute o script de instalação para configurar os atalhos, ícones e serviço de usuário:
 
 ```bash
