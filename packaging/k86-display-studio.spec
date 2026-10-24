@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 
-ROOT = Path(SPECPATH).parent.parent
+ROOT = Path(SPECPATH).parent
 APP_NAME = "K86 Display Studio"
 
 hidden_imports = [
@@ -13,6 +13,12 @@ hidden_imports = [
     "gi.repository.Gtk",
     "hid",
     "psutil",
+    "k86_trio_daemon",
+    "k86_service",
+    "k86_fonts",
+    "k86_config",
+    "k86_renderer",
+    "k86_trio_monitor",
 ]
 datas = [(str(ROOT / "assets"), "assets")]
 binaries = []

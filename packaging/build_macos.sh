@@ -7,7 +7,7 @@ DIST_DIR="${REPO_DIR}/dist"
 ARCH="$(uname -m)"
 
 cd "${REPO_DIR}"
-python3 -m PyInstaller packaging/k86-display-studio.spec --noconfirm --clean
+python3 -m PyInstaller packaging/k86-display-studio.spec --noconfirm --clean --distpath dist
 
 DMG_PATH="${DIST_DIR}/K86DisplayStudio-${VERSION}-macOS-${ARCH}.dmg"
 STAGING_DIR="$(mktemp -d)"
