@@ -19,6 +19,7 @@ SCREEN_H: int = 128
 
 CONFIG_DIR: Path = Path.home() / ".config" / "codenotch"
 ICONS_DIR: Path = CONFIG_DIR / "k86_icons"
+ASSETS_DIR: Path = Path(__file__).resolve().parent / "assets"
 
 
 def _get_font(font_name: str, size: int) -> ImageFont.ImageFont:
@@ -219,11 +220,15 @@ def _render_single_focus_screen(item: dict[str, Any], show_clock: bool) -> Image
     # Look for 48x48 icon with robust fallbacks
     candidates = [
         ICONS_DIR / f"{item['key']}_48.png",
+        ASSETS_DIR / f"{item['key']}_48.png",
     ]
     if item.get("icon_file"):
         candidates.append(ICONS_DIR / item["icon_file"].replace(".png", "_48.png"))
+        candidates.append(ASSETS_DIR / item["icon_file"].replace(".png", "_48.png"))
         candidates.append(ICONS_DIR / f"{item['key']}.png")
+        candidates.append(ASSETS_DIR / f"{item['key']}.png")
         candidates.append(ICONS_DIR / item["icon_file"])
+        candidates.append(ASSETS_DIR / item["icon_file"])
 
     for p in candidates:
         if p and p.is_file():
@@ -440,6 +445,8 @@ def render_display(
         icon_pasted = False
         if item["icon_file"]:
             icon_path = ICONS_DIR / item["icon_file"]
+            if not icon_path.is_file():
+                icon_path = ASSETS_DIR / item["icon_file"]
             if icon_path.is_file():
                 try:
                     icon_img = Image.open(icon_path).convert("RGBA")
